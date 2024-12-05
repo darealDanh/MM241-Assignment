@@ -28,24 +28,28 @@ if __name__ == "__main__":
     #         ep += 1
     # print("GreedyPolicy done")
     # Reset the environment
-    observation, info = env.reset(seed=42)
+    # observation, info = env.reset(seed=42)
 
-    # Test RandomPolicy
-    rd_policy = RandomPolicy()
-    ep = 0
-    while ep < NUM_EPISODES:
-        action = rd_policy.get_action(observation, info)
-        observation, reward, terminated, truncated, info = env.step(action)
+    # # Test RandomPolicy
+    # rd_policy = RandomPolicy()
+    # ep = 0
+    # while ep < NUM_EPISODES:
+    #     action = rd_policy.get_action(observation, info)
+    #     observation, reward, terminated, truncated, info = env.step(action)
 
-        if terminated or truncated:
-            observation, info = env.reset(seed=ep)
-            print(info)
-            ep += 1
-    print("RandomPolicy done")
+    #     if terminated or truncated:
+    #         observation, info = env.reset(seed=ep)
+    #         print(info)
+    #         ep += 1
+    # print("RandomPolicy done")
     # Uncomment the following code to test your policy
     # Reset the environment
     observation, info = env.reset(seed=42)
     print(info)
+    print(len(observation["stocks"]))
+    print(
+        "================================================================================"
+    )
     print(len(observation["products"]))
     print(observation["stocks"])
     while len(observation["products"]) <= 10:
