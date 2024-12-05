@@ -2,7 +2,7 @@ import numpy as np
 import random
 from random import randint, shuffle, choice, sample
 from typing import List, Tuple, Dict
-from copy import deepcopy
+from copy import deepcopy, copy
 from collections import defaultdict
 from math import ceil, floor
 
@@ -32,7 +32,7 @@ class Chromosome:
 
 class Policy2350030(Chromosome):
     def __init__(self):
-        self.MAX_ITER = 2000
+        self.MAX_ITER = 50
         self.pop_size = 300
         self.generations = 50
         self.mutation_rate = 0.1
@@ -44,14 +44,69 @@ class Policy2350030(Chromosome):
         self.demandArr = []
         self.N = 0
 
-    def initialize_population(self, maxRepeatArr):
+    # def initialize_population(self, maxRepeatArr):
+    #     initPopulation = []
+    #     for _ in range(self.pop_size):
+    #         chromosome = []
+    #         for i in np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr)):
+    #             chromosome.append(i)
+    #             chromosome.append(randint(1, maxRepeatArr[i]))
+    #         initPopulation.append(chromosome)
+    #     return initPopulation
+
+    def _can_place_(self, stock, position, prod_size):
+        x, y = position
+        prod_width, prod_height = prod_size
+
+        stock_width, stock_height = self._get_stock_size_(stock)
+
+        # print("stock_width", stock_width)
+        # print("stock_height", stock_height)
+        # print("prod_width", prod_width)
+        # print("prod_height", prod_height)
+        # print("x", x)
+        # print("y", y)
+
+        # Check if the product fits within the stock dimensions
+        if x + prod_width > stock_width or y + prod_height > stock_height:
+            # print("prod does not fit")
+            return False
+
+        # Check if the area is free (assuming stock is a 2D list)
+        for i in range(prod_width):
+            for j in range(prod_height):
+                if stock[y + j][x + i] != -1:
+                    # print("area is not free")
+                    return False
+
+        # print("area is free")
+        return True
+
+    def initialize_population(self, maxRepeatArr, observation):
         initPopulation = []
         for _ in range(self.pop_size):
-            chromosome = []
-            for i in np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr)):
-                chromosome.append(i)
-                chromosome.append(randint(1, maxRepeatArr[i]))
+            pieces = []
+            # Sort pieces by area (largest first)
+            sorted_indices = np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr))
+            
+            for i in sorted_indices:
+                count = randint(1, maxRepeatArr[i])
+                # Create piece dictionary
+                piece = {
+                    "index": int(i),
+                    "count": count,
+                    "length": self.lengthArr[i],
+                    "width": self.widthArr[i]
+                }
+                pieces.append(piece)
+                
+            # Create Chromosome object with the pieces
+            stocks = observation["stocks"]
+            stock = stocks[0]
+            stock_w, stock_h = self._get_stock_size_(stock)
+            chromosome = Chromosome((stock_w, stock_h), pieces)
             initPopulation.append(chromosome)
+        
         return initPopulation
 
     def calculate_fitness(self, chromosome: Chromosome) -> float:
@@ -68,7 +123,8 @@ class Policy2350030(Chromosome):
         while stack:
             current_pattern, length_used, width_used = stack.pop()
 
-            for i in range(self.N):
+            for i in range(min(self.N, len(self.lengthArr), len(self.widthArr), len(self.demandArr))):
+            # for i in range(self.N):
                 max_repeat = min(
                     (stockLength - length_used) // self.lengthArr[i],
                     (stockWidth - width_used) // self.widthArr[i],
@@ -101,12 +157,42 @@ class Policy2350030(Chromosome):
             result.append(maxRep)
         return result
 
+    # def generate_heuristic_patterns(self, stockLength, stockWidth):
+    #     patterns = []
+    #     for i in range(min(self.N, len(self.lengthArr), len(self.widthArr), len(self.demandArr))):
+    #         max_repeat_length = stockLength // self.lengthArr[i]
+    #         max_repeat_width = stockWidth // self.widthArr[i]
+    #         max_repeat = min(max_repeat_length, max_repeat_width, self.demandArr[i])
+    #         if max_repeat > 0:
+    #             pattern = [0] * self.N
+    #             pattern[i] = max_repeat
+    #             patterns.append(pattern)
+    #     return patterns
+
+    # def calculate_max_repeats(self, patterns):
+    #     max_repeats = [0] * len(patterns)
+    #     for i, pattern in enumerate(patterns):
+    #         max_repeats[i] = max(
+    #             ceil(self.demandArr[j] / pattern[j]) if pattern[j] > 0 else 0
+    #             for j in range(len(pattern))
+    #         )
+    #     return max_repeats
+
+    # def crossover(self, parent1: Chromosome, parent2: Chromosome) -> Chromosome:
+    #     child = Chromosome(parent1.stock_size, deepcopy(parent1.pieces))
+    #     crossover_point = random.randint(0, len(parent1.pieces))
+    #     child_pieces = list(child.pieces)
+    #     child_pieces[:crossover_point] = deepcopy(parent1.pieces[:crossover_point])
+    #     child_pieces[crossover_point:] = deepcopy(parent2.pieces[crossover_point:])
+    #     child.pieces = tuple(child_pieces)
+    #     return child
+
     def crossover(self, parent1: Chromosome, parent2: Chromosome) -> Chromosome:
-        child = Chromosome(parent1.stock_size, deepcopy(parent1.pieces))
-        crossover_point = random.randint(0, len(parent1.pieces))
+        child = Chromosome(parent1.stock_size, copy(parent1.pieces))
+        crossover_point = random.randint(0, len(parent1.pieces) - 1)
         child_pieces = list(child.pieces)
-        child_pieces[:crossover_point] = deepcopy(parent1.pieces[:crossover_point])
-        child_pieces[crossover_point:] = deepcopy(parent2.pieces[crossover_point:])
+        child_pieces[:crossover_point] = copy(parent1.pieces[:crossover_point])
+        child_pieces[crossover_point:] = copy(parent2.pieces[crossover_point:])
         child.pieces = tuple(child_pieces)
         return child
 
@@ -193,18 +279,22 @@ class Policy2350030(Chromosome):
             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
 
         first_stock = stocks[0]
+        # print("first_stock", first_stock)
         stock_Length, stock_Width = self._get_stock_size_(first_stock)
 
+        # patterns = self.generate_efficient_patterns(stock_Length, stock_Width)
+        # maxRepeatArr = self.max_pattern_exist(patterns)
         patterns = self.generate_efficient_patterns(stock_Length, stock_Width)
         maxRepeatArr = self.max_pattern_exist(patterns)
-        self.population = self.initialize_population(maxRepeatArr)
+        self.population = self.initialize_population(maxRepeatArr, observation)
 
         best_solution, best_fitness, best_results = self.run_genetic_algorithm(
             (stock_Length, stock_Width), list_prods
         )
 
-        for i in range(0, len(best_solution), 2):
-            pattern_index = best_solution[i]
+        for i in range(0, len(best_solution.pieces), 2):
+            pattern_index = best_solution.pieces[i]["index"]
+            # print("pattern_index", pattern_index)
             # repetition = best_solution[i + 1]
             # pattern = patterns[pattern_index]
 
@@ -220,6 +310,9 @@ class Policy2350030(Chromosome):
                         )
 
                         if self._can_place_(stock, (x, y), prod_size):
+                            # print("stock_idx", stock_idx)
+                            # print("prod_size", prod_size)
+                            # print("position", (x, y))
                             return {
                                 "stock_idx": stock_idx,
                                 "size": prod_size,
