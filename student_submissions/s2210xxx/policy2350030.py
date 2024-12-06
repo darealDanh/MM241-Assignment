@@ -1,36 +1,11 @@
 import numpy as np
-import random
-from random import randint, shuffle, choice, sample
-from typing import List, Tuple, Dict
-from copy import deepcopy, copy
-from collections import defaultdict
+from random import randint, shuffle, choice, sample, choices, random
+from copy import deepcopy, copy, error
 from math import ceil, floor
+from policy import Policy
 
 
-class Chromosome:
-    def __init__(self, stock_size: Tuple[int, int], pieces: List[Dict]):
-        self.stock_size = stock_size
-        self.pieces = pieces  # List of piece placements
-        self.fitness = 0
-        self.layout = np.zeros(stock_size)
-
-    def _get_stock_size_(self, stock):
-        stock_w = np.sum(np.any(stock != -2, axis=1))
-        stock_h = np.sum(np.any(stock != -2, axis=0))
-
-        return stock_w, stock_h
-
-    def is_valid_placement(self, piece: Dict, pos: Tuple[int, int]) -> bool:
-        x, y = pos
-        w, h = piece["size"]
-
-        if x + w > self.stock_size[0] or y + h > self.stock_size[1]:
-            return False
-
-        return not np.any(self.layout[y : y + h, x : x + w] > 0)
-
-
-class Policy2350030(Chromosome):
+class Policy2350030(Policy):
     def __init__(self):
         self.MAX_ITER = 50
         self.pop_size = 300
@@ -44,15 +19,15 @@ class Policy2350030(Chromosome):
         self.demandArr = []
         self.N = 0
 
-    # def initialize_population(self, maxRepeatArr):
-    #     initPopulation = []
-    #     for _ in range(self.pop_size):
-    #         chromosome = []
-    #         for i in np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr)):
-    #             chromosome.append(i)
-    #             chromosome.append(randint(1, maxRepeatArr[i]))
-    #         initPopulation.append(chromosome)
-    #     return initPopulation
+    def initialize_population(self, maxRepeatArr):
+        initPopulation = []
+        for _ in range(self.pop_size):
+            chromosome = []
+            for i in np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr)):
+                chromosome.append(i)
+                chromosome.append(randint(1, maxRepeatArr[i]))
+            initPopulation.append(chromosome)
+        return initPopulation
 
     def _can_place_(self, stock, position, prod_size):
         x, y = position
@@ -82,39 +57,43 @@ class Policy2350030(Chromosome):
         # print("area is free")
         return True
 
-    def initialize_population(self, maxRepeatArr, observation):
-        initPopulation = []
-        for _ in range(self.pop_size):
-            pieces = []
-            # Sort pieces by area (largest first)
-            sorted_indices = np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr))
-            
-            for i in sorted_indices:
-                count = randint(1, maxRepeatArr[i])
-                # Create piece dictionary
-                piece = {
-                    "index": int(i),
-                    "count": count,
-                    "length": self.lengthArr[i],
-                    "width": self.widthArr[i]
-                }
-                pieces.append(piece)
-                
-            # Create Chromosome object with the pieces
-            stocks = observation["stocks"]
-            stock = stocks[0]
-            stock_w, stock_h = self._get_stock_size_(stock)
-            chromosome = Chromosome((stock_w, stock_h), pieces)
-            initPopulation.append(chromosome)
-        
-        return initPopulation
+    # def initialize_population(self, maxRepeatArr, observation):
+    #     initPopulation = []
+    #     for _ in range(self.pop_size):
+    #         pieces = []
+    #         # Sort pieces by area (largest first)
+    #         sorted_indices = np.argsort(
+    #             -np.array(self.lengthArr) * np.array(self.widthArr)
+    #         )
 
-    def calculate_fitness(self, chromosome: Chromosome) -> float:
-        used_area = 0
-        for piece in chromosome.pieces:
-            if "position" in piece:
-                used_area += piece["size"][0] * piece["size"][1]
-        return used_area / (chromosome.stock_size[0] * chromosome.stock_size[1])
+    #         for i in sorted_indices:
+    #             count = randint(1, maxRepeatArr[i])
+    #             # Create piece dictionary
+    #             piece = {
+    #                 "index": int(i),
+    #                 "count": count,
+    #                 "length": self.lengthArr[i],
+    #                 "width": self.widthArr[i],
+    #             }
+    #             pieces.append(piece)
+
+    #         # Create Chromosome object with the pieces
+    #         stocks = observation["stocks"]
+    #         stock = stocks[0]
+    #         stock_w, stock_h = self._get_stock_size_(stock)
+    #         chromosome = Chromosome((stock_w, stock_h), pieces)
+    #         initPopulation.append(chromosome)
+
+    #     return initPopulation
+
+    def calculate_fitness(self, chromosome, patterns):
+        fitness = 0
+        for i in range(0, len(chromosome), 2):
+            pattern_index = chromosome[i]
+            repetition = chromosome[i + 1]
+            pattern = patterns[pattern_index]
+            fitness += sum(pattern) * repetition
+        return fitness
 
     def generate_efficient_patterns(self, stockLength, stockWidth):
         patterns = []
@@ -123,8 +102,12 @@ class Policy2350030(Chromosome):
         while stack:
             current_pattern, length_used, width_used = stack.pop()
 
-            for i in range(min(self.N, len(self.lengthArr), len(self.widthArr), len(self.demandArr))):
-            # for i in range(self.N):
+            for i in range(
+                min(
+                    self.N, len(self.lengthArr), len(self.widthArr), len(self.demandArr)
+                )
+            ):
+                # for i in range(self.N):
                 max_repeat = min(
                     (stockLength - length_used) // self.lengthArr[i],
                     (stockWidth - width_used) // self.widthArr[i],
@@ -187,66 +170,82 @@ class Policy2350030(Chromosome):
     #     child.pieces = tuple(child_pieces)
     #     return child
 
-    def crossover(self, parent1: Chromosome, parent2: Chromosome) -> Chromosome:
-        child = Chromosome(parent1.stock_size, copy(parent1.pieces))
-        crossover_point = random.randint(0, len(parent1.pieces) - 1)
-        child_pieces = list(child.pieces)
-        child_pieces[:crossover_point] = copy(parent1.pieces[:crossover_point])
-        child_pieces[crossover_point:] = copy(parent2.pieces[crossover_point:])
-        child.pieces = tuple(child_pieces)
+    def crossover(self, parent1, parent2):
+        child = []
+        crossover_point = randint(0, len(parent1) - 1)
+        child[:crossover_point] = copy(parent1[:crossover_point])
+        child[crossover_point:] = copy(parent2[crossover_point:])
         return child
 
-    def mutate(self, chromosome: Chromosome):
-        if random.random() < self.mutation_rate:
-            piece_idx = random.randint(0, len(chromosome.pieces) - 1)
-            piece = chromosome.pieces[piece_idx]
-            if "position" in piece:
-                x = random.randint(0, chromosome.stock_size[0] - piece["size"][0])
-                y = random.randint(0, chromosome.stock_size[1] - piece["size"][1])
-                if chromosome.is_valid_placement(piece, (x, y)):
-                    piece["position"] = (x, y)
+    def mutate(self, chromosome, mutation_rate, max_repeat_arr):
+        mutated_chromosome = chromosome[:]
+        for i in range(0, len(chromosome), 2):
+            if random() < mutation_rate and i + 1 < len(chromosome):
+                pattern_index = mutated_chromosome[i]
+                max_rep = max_repeat_arr[pattern_index]
+                mutated_chromosome[i + 1] = randint(1, max_rep)
+        return mutated_chromosome
 
-    def select_parents(self, population: List[Chromosome]) -> List[Chromosome]:
-        # Tournament selection
-        tournament_size = 5
-        parents = []
-        for _ in range(2):
-            tournament = random.sample(population, tournament_size)
-            winner = max(tournament, key=lambda x: x.fitness)
-            parents.append(winner)
-        return parents
+    def select_parents(self, fitness_s, population):
+        # select with roulette wheel selection
+        total_fitness = sum(fitness_s)
+        pick = random() * total_fitness
+        current = 0
+        for i, fitness in enumerate(fitness_s):
+            current += fitness
+            if current > pick:
+                parent1 = population[i]
+                break
+        return parent1
 
-    def evolve(self, population: List[Chromosome]) -> List[Chromosome]:
-        # Calculate fitness for all chromosomes
-        for chromosome in population:
-            chromosome.fitness = self.calculate_fitness(chromosome)
-
-        # Sort by fitness
-        population.sort(key=lambda x: x.fitness, reverse=True)
-
-        # Keep elite solutions
-        new_population = deepcopy(population[: self.elite_size])
-
-        # Generate rest of population through crossover and mutation
+    def evolve(
+        self,
+        population,
+        new_population,
+        patterns,
+        fitness_s,
+        mutation_rate,
+        max_repeat_arr,
+    ):
         while len(new_population) < self.pop_size:
-            parents = self.select_parents(population)
-            child = self.crossover(parents[0], parents[1])
-            self.mutate(child)
+            parent1 = self.select_parents(fitness_s, population)
+            parent2 = self.select_parents(fitness_s, population)
+            while parent1 == parent2:
+                parent2 = self.select_parents(fitness_s, population)
+            child = self.crossover(parent1, parent2)
+            self.mutate(child, mutation_rate, max_repeat_arr)
             new_population.append(child)
 
         return new_population
 
-    def run_genetic_algorithm(self, stock_size: Tuple[int, int], pieces: List[Dict]):
+    def run_genetic_algorithm(self, patterns, population, max_repeat_arr):
         best_results = []
         for _ in range(self.MAX_ITER):
-            fitness_pairs = [(ch, self.calculate_fitness(ch)) for ch in self.population]
+            fitness_pairs = [
+                (ch, self.calculate_fitness(ch, patterns)) for ch in self.population
+            ]
+            fitness_pairs.sort(key=lambda x: x[1], reverse=True)
+
+            # Keep elite solutions
+            new_population = deepcopy(population[: self.elite_size])
             best_solution, best_fitness = fitness_pairs[0]
             best_results.append(best_fitness)
-            next_gen = self.evolve(self.population)
-            self.population = next_gen
+
+            # start evolving
+            next_gen = self.evolve(
+                population,
+                new_population,
+                patterns,
+                [sc[1] for sc in fitness_pairs],
+                self.mutation_rate,
+                max_repeat_arr,
+            )
+
+            self.population = deepcopy(next_gen[: self.pop_size])
+
         return best_solution, best_fitness, best_results
 
-    def create_new_pop(self, population: List[Chromosome]) -> List[Chromosome]:
+    def create_new_pop(self, population):
         new_pop = []
         for _ in range(self.pop_size):
             parent1, parent2 = random.sample(population, 2)
@@ -286,14 +285,14 @@ class Policy2350030(Chromosome):
         # maxRepeatArr = self.max_pattern_exist(patterns)
         patterns = self.generate_efficient_patterns(stock_Length, stock_Width)
         maxRepeatArr = self.max_pattern_exist(patterns)
-        self.population = self.initialize_population(maxRepeatArr, observation)
+        self.population = self.initialize_population(maxRepeatArr)
 
-        best_solution, best_fitness, best_results = self.run_genetic_algorithm(
-            (stock_Length, stock_Width), list_prods
+        best_solution, _, _ = self.run_genetic_algorithm(
+            patterns, self.population, maxRepeatArr
         )
 
-        for i in range(0, len(best_solution.pieces), 2):
-            pattern_index = best_solution.pieces[i]["index"]
+        for i in range(0, len(best_solution), 2):
+            pattern_index = best_solution[i]
             # print("pattern_index", pattern_index)
             # repetition = best_solution[i + 1]
             # pattern = patterns[pattern_index]
@@ -303,22 +302,23 @@ class Policy2350030(Chromosome):
                 for x in range(stock_w):
                     for y in range(stock_h):
                         if pattern_index >= len(self.lengthArr):
-                            continue  # Skip invalid pattern indices
+                            continue
                         prod_size = (
                             self.lengthArr[pattern_index],
                             self.widthArr[pattern_index],
                         )
 
                         if self._can_place_(stock, (x, y), prod_size):
-                            # print("stock_idx", stock_idx)
-                            # print("prod_size", prod_size)
-                            # print("position", (x, y))
+                            print("found=====================================")
+                            print("stock_idx", stock_idx)
+                            print("prod_size", prod_size)
+                            print("position", (x, y))
                             return {
                                 "stock_idx": stock_idx,
                                 "size": prod_size,
                                 "position": (x, y),
                             }
-
+        print("not found=====================================")
         return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
 
 
