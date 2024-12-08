@@ -1,17 +1,17 @@
 import numpy as np
-from random import randint, shuffle, choice, sample, choices, random
-from copy import deepcopy, copy, error
-from math import ceil, floor
+from random import randint, random, sample
+from copy import deepcopy
+from math import ceil
+import time
 from policy import Policy
-
 
 class Policy2350030(Policy):
     def __init__(self):
-        self.MAX_ITER = 50
-        self.pop_size = 300
-        self.generations = 50
-        self.mutation_rate = 0.1
-        self.elite_size = 2
+        self.MAX_ITER = 100
+        self.pop_size = 100
+        self.generations = 200
+        self.mutation_rate = 0.01
+        self.elite_size = 3
         self.population = []
         self.best_solution = None
         self.lengthArr = []
@@ -20,94 +20,31 @@ class Policy2350030(Policy):
         self.N = 0
 
     def initialize_population(self, maxRepeatArr):
-        initPopulation = []
-        for _ in range(self.pop_size):
-            chromosome = []
-            for i in np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr)):
-                chromosome.append(i)
-                chromosome.append(randint(1, maxRepeatArr[i]))
-            initPopulation.append(chromosome)
-        return initPopulation
+        return [
+            [i, randint(1, maxRepeatArr[i])]
+            for _ in range(self.pop_size)
+            for i in np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr))
+        ]
 
-    def _can_place_(self, stock, position, prod_size):
-        x, y = position
-        prod_width, prod_height = prod_size
-
-        stock_width, stock_height = self._get_stock_size_(stock)
-
-        # print("stock_width", stock_width)
-        # print("stock_height", stock_height)
-        # print("prod_width", prod_width)
-        # print("prod_height", prod_height)
-        # print("x", x)
-        # print("y", y)
-
-        # Check if the product fits within the stock dimensions
-        if x + prod_width > stock_width or y + prod_height > stock_height:
-            # print("prod does not fit")
-            return False
-
-        # Check if the area is free (assuming stock is a 2D list)
-        for i in range(prod_width):
-            for j in range(prod_height):
-                if stock[y + j][x + i] != -1:
-                    # print("area is not free")
-                    return False
-
-        # print("area is free")
-        return True
-
-    # def initialize_population(self, maxRepeatArr, observation):
-    #     initPopulation = []
-    #     for _ in range(self.pop_size):
-    #         pieces = []
-    #         # Sort pieces by area (largest first)
-    #         sorted_indices = np.argsort(
-    #             -np.array(self.lengthArr) * np.array(self.widthArr)
-    #         )
-
-    #         for i in sorted_indices:
-    #             count = randint(1, maxRepeatArr[i])
-    #             # Create piece dictionary
-    #             piece = {
-    #                 "index": int(i),
-    #                 "count": count,
-    #                 "length": self.lengthArr[i],
-    #                 "width": self.widthArr[i],
-    #             }
-    #             pieces.append(piece)
-
-    #         # Create Chromosome object with the pieces
-    #         stocks = observation["stocks"]
-    #         stock = stocks[0]
-    #         stock_w, stock_h = self._get_stock_size_(stock)
-    #         chromosome = Chromosome((stock_w, stock_h), pieces)
-    #         initPopulation.append(chromosome)
-
-    #     return initPopulation
+    def _can_place_(self, stock, position, prod_size, rotated=False):
+        pos_x, pos_y = position
+        prod_w, prod_h = prod_size if not rotated else (prod_size[1], prod_size[0])
+        return np.all(stock[pos_x : pos_x + prod_w, pos_y : pos_y + prod_h] == -1)
 
     def calculate_fitness(self, chromosome, patterns):
-        fitness = 0
-        for i in range(0, len(chromosome), 2):
-            pattern_index = chromosome[i]
-            repetition = chromosome[i + 1]
-            pattern = patterns[pattern_index]
-            fitness += sum(pattern) * repetition
-        return fitness
+        return sum(
+            np.sum(patterns[chromosome[i]]) * chromosome[i + 1]
+            for i in range(0, len(chromosome), 2)
+        )
 
     def generate_efficient_patterns(self, stockLength, stockWidth):
         patterns = []
         stack = [([0] * self.N, 0, 0)]
-
         while stack:
             current_pattern, length_used, width_used = stack.pop()
-
-            for i in range(
-                min(
-                    self.N, len(self.lengthArr), len(self.widthArr), len(self.demandArr)
-                )
-            ):
-                # for i in range(self.N):
+            for i in range(self.N):
+                if i >= len(self.lengthArr) or i >= len(self.widthArr) or i >= len(self.demandArr):
+                    continue
                 max_repeat = min(
                     (stockLength - length_used) // self.lengthArr[i],
                     (stockWidth - width_used) // self.widthArr[i],
@@ -124,114 +61,54 @@ class Policy2350030(Policy):
                             width_used + max_repeat * self.widthArr[i],
                         )
                     )
-
         return patterns
 
     def max_pattern_exist(self, patterns):
-        result = []
-        for pattern in patterns:
-            maxRep = 0
-            for i in range(len(pattern)):
-                if pattern[i] > 0:
-
-                    neededRep = ceil(self.demandArr[i] / pattern[i])
-                    if neededRep > maxRep:
-                        maxRep = neededRep
-            result.append(maxRep)
-        return result
-
-    # def generate_heuristic_patterns(self, stockLength, stockWidth):
-    #     patterns = []
-    #     for i in range(min(self.N, len(self.lengthArr), len(self.widthArr), len(self.demandArr))):
-    #         max_repeat_length = stockLength // self.lengthArr[i]
-    #         max_repeat_width = stockWidth // self.widthArr[i]
-    #         max_repeat = min(max_repeat_length, max_repeat_width, self.demandArr[i])
-    #         if max_repeat > 0:
-    #             pattern = [0] * self.N
-    #             pattern[i] = max_repeat
-    #             patterns.append(pattern)
-    #     return patterns
-
-    # def calculate_max_repeats(self, patterns):
-    #     max_repeats = [0] * len(patterns)
-    #     for i, pattern in enumerate(patterns):
-    #         max_repeats[i] = max(
-    #             ceil(self.demandArr[j] / pattern[j]) if pattern[j] > 0 else 0
-    #             for j in range(len(pattern))
-    #         )
-    #     return max_repeats
-
-    # def crossover(self, parent1: Chromosome, parent2: Chromosome) -> Chromosome:
-    #     child = Chromosome(parent1.stock_size, deepcopy(parent1.pieces))
-    #     crossover_point = random.randint(0, len(parent1.pieces))
-    #     child_pieces = list(child.pieces)
-    #     child_pieces[:crossover_point] = deepcopy(parent1.pieces[:crossover_point])
-    #     child_pieces[crossover_point:] = deepcopy(parent2.pieces[crossover_point:])
-    #     child.pieces = tuple(child_pieces)
-    #     return child
+        return [
+            max(ceil(self.demandArr[i] / pattern[i]) for i in range(len(pattern)) if pattern[i] > 0)
+            for pattern in patterns
+        ]
 
     def crossover(self, parent1, parent2):
-        child = []
         crossover_point = randint(0, len(parent1) - 1)
-        child[:crossover_point] = copy(parent1[:crossover_point])
-        child[crossover_point:] = copy(parent2[crossover_point:])
-        return child
+        return parent1[:crossover_point] + parent2[crossover_point:]
 
-    def mutate(self, chromosome, mutation_rate, max_repeat_arr):
-        mutated_chromosome = chromosome[:]
-        for i in range(0, len(chromosome), 2):
-            if random() < mutation_rate and i + 1 < len(chromosome):
-                pattern_index = mutated_chromosome[i]
-                max_rep = max_repeat_arr[pattern_index]
-                mutated_chromosome[i + 1] = randint(1, max_rep)
-        return mutated_chromosome
+    def mutate(self, chromosome, mutation_rate):
+        for i in range(len(chromosome)):
+            if random() < mutation_rate:
+                swap_idx = randint(0, len(chromosome) - 1)
+                chromosome[i], chromosome[swap_idx] = chromosome[swap_idx], chromosome[i]
+        return chromosome
 
     def select_parents(self, fitness_s, population):
-        # select with roulette wheel selection
-        total_fitness = sum(fitness_s)
-        pick = random() * total_fitness
-        current = 0
-        for i, fitness in enumerate(fitness_s):
-            current += fitness
-            if current > pick:
-                parent1 = population[i]
-                break
-        return parent1
+        total_fitness = np.sum(fitness_s)
+        pick = np.random.rand() * total_fitness
+        cumulative_fitness = np.cumsum(fitness_s)
+        parent_index = np.searchsorted(cumulative_fitness, pick)
+        return population[parent_index]
 
-    def evolve(
-        self,
-        population,
-        new_population,
-        patterns,
-        fitness_s,
-        mutation_rate,
-        max_repeat_arr,
-    ):
+    def evolve(self, population, new_population, patterns, fitness_s, mutation_rate, max_repeat_arr):
         while len(new_population) < self.pop_size:
             parent1 = self.select_parents(fitness_s, population)
             parent2 = self.select_parents(fitness_s, population)
             while parent1 == parent2:
                 parent2 = self.select_parents(fitness_s, population)
             child = self.crossover(parent1, parent2)
-            self.mutate(child, mutation_rate, max_repeat_arr)
+            self.mutate(child, mutation_rate)
             new_population.append(child)
-
         return new_population
 
     def run_genetic_algorithm(self, patterns, population, max_repeat_arr):
+        start_time = time.time()
         best_results = []
         for _ in range(self.MAX_ITER):
             fitness_pairs = [
                 (ch, self.calculate_fitness(ch, patterns)) for ch in self.population
             ]
             fitness_pairs.sort(key=lambda x: x[1], reverse=True)
-
-            # Keep elite solutions
-            new_population = deepcopy(population[: self.elite_size])
+            new_population = deepcopy([sc[0] for sc in fitness_pairs[: self.elite_size]])
             best_solution, best_fitness = fitness_pairs[0]
             best_results.append(best_fitness)
-
-            # start evolving
             next_gen = self.evolve(
                 population,
                 new_population,
@@ -240,336 +117,57 @@ class Policy2350030(Policy):
                 self.mutation_rate,
                 max_repeat_arr,
             )
-
             self.population = deepcopy(next_gen[: self.pop_size])
-
+        end_time = time.time()
+        print(f"Execution time: {end_time - start_time} seconds")
         return best_solution, best_fitness, best_results
 
     def create_new_pop(self, population):
-        new_pop = []
-        for _ in range(self.pop_size):
-            parent1, parent2 = random.sample(population, 2)
-            child = self.crossover(parent1, parent2)
-            self.mutate(child)
-            new_pop.append(child)
-        return new_pop
+        return [
+            self.mutate(self.crossover(*sample(population, 2)), self.mutation_rate)
+            for _ in range(self.pop_size)
+        ]
 
     def get_action(self, observation, info):
         list_prods = observation["products"]
         stocks = observation["stocks"]
-
-        if not list_prods:
+        if not list_prods or not stocks:
             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
-        if not stocks:
-            return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
-        self.lengthArr = [
-            prod["size"][0] for prod in list_prods if prod["quantity"] > 0
-        ]
+        self.lengthArr = [prod["size"][0] for prod in list_prods if prod["quantity"] > 0]
         self.widthArr = [prod["size"][1] for prod in list_prods if prod["quantity"] > 0]
-        self.demandArr = [
-            prod["quantity"] for prod in list_prods if prod["quantity"] > 0
-        ]
-
-        # check if there any products
-        self.N = len(list_prods)
+        self.demandArr = [prod["quantity"] for prod in list_prods if prod["quantity"] > 0]
+        self.N = len(self.lengthArr)  # Ensure N is set correctly
         if self.N == 0:
             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
         first_stock = stocks[0]
-        # print("first_stock", first_stock)
         stock_Length, stock_Width = self._get_stock_size_(first_stock)
-
-        # patterns = self.generate_efficient_patterns(stock_Length, stock_Width)
-        # maxRepeatArr = self.max_pattern_exist(patterns)
         patterns = self.generate_efficient_patterns(stock_Length, stock_Width)
         maxRepeatArr = self.max_pattern_exist(patterns)
         self.population = self.initialize_population(maxRepeatArr)
-
         best_solution, _, _ = self.run_genetic_algorithm(
             patterns, self.population, maxRepeatArr
         )
-
         for i in range(0, len(best_solution), 2):
             pattern_index = best_solution[i]
-            # print("pattern_index", pattern_index)
-            # repetition = best_solution[i + 1]
-            # pattern = patterns[pattern_index]
-
             for stock_idx, stock in enumerate(stocks):
                 stock_w, stock_h = self._get_stock_size_(stock)
                 for x in range(stock_w):
                     for y in range(stock_h):
                         if pattern_index >= len(self.lengthArr):
                             continue
-                        prod_size = (
-                            self.lengthArr[pattern_index],
-                            self.widthArr[pattern_index],
-                        )
-
+                        prod_size = (self.lengthArr[pattern_index], self.widthArr[pattern_index])
                         if self._can_place_(stock, (x, y), prod_size):
-                            print("found=====================================")
-                            print("stock_idx", stock_idx)
-                            print("prod_size", prod_size)
-                            print("position", (x, y))
                             return {
                                 "stock_idx": stock_idx,
                                 "size": prod_size,
                                 "position": (x, y),
+                                "rotated": False,
                             }
-        print("not found=====================================")
+                        elif self._can_place_(stock, (x, y), prod_size, rotated=True):
+                            return {
+                                "stock_idx": stock_idx,
+                                "size": (prod_size[1], prod_size[0]),
+                                "position": (x, y),
+                                "rotated": True,
+                            }
         return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
-
-# class Particle:
-#     def __init__(self, stock_size: Tuple[int, int], pieces: List[Dict]):
-#         self.stock_size = stock_size
-#         self.pieces = deepcopy(pieces)
-#         self.velocity = np.zeros((len(pieces), 2))  # 2D velocity for each piece
-#         self.position = self.initialize_position()
-#         self.pbest_position = self.position.copy()
-#         self.pbest_score = float("-inf")
-#         self.fitness = 0
-
-#     def initialize_position(self) -> np.ndarray:
-#         positions = np.zeros((len(self.pieces), 2))
-#         for i, piece in enumerate(self.pieces):
-#             x = random.randint(0, self.stock_size[0] - piece["size"][0])
-#             y = random.randint(0, self.stock_size[1] - piece["size"][1])
-#             positions[i] = [x, y]
-#         return positions
-
-
-# class Policy2350030:
-#     def __init__(self):
-#         self.num_particles = 30
-#         self.w = 0.7  # inertia weight
-#         self.c1 = 1.5  # cognitive weight
-#         self.c2 = 1.5  # social weight
-#         self.max_iter = 50
-#         self.particles = []
-#         self.gbest_position = None
-#         self.gbest_score = float("-inf")
-
-#     def initialize_swarm(self, stock_size: Tuple[int, int], pieces: List[Dict]):
-#         self.particles = [
-#             Particle(stock_size, pieces) for _ in range(self.num_particles)
-#         ]
-
-#     def calculate_fitness(self, particle: Particle) -> float:
-#         used_area = 0
-#         overlap = 0
-
-#         for i, piece in enumerate(particle.pieces):
-#             x, y = particle.position[i]
-#             w, h = piece["size"]
-
-#             # Check boundaries
-#             if (
-#                 x < 0
-#                 or y < 0
-#                 or x + w > particle.stock_size[0]
-#                 or y + h > particle.stock_size[1]
-#             ):
-#                 return float("-inf")
-
-#             used_area += w * h
-
-#             # Check overlap with other pieces
-#             for j, other_piece in enumerate(particle.pieces):
-#                 if i != j:
-#                     ox, oy = particle.position[j]
-#                     ow, oh = other_piece["size"]
-
-#                     if x < ox + ow and x + w > ox and y < oy + oh and y + h > oy:
-#                         overlap += 1
-
-#         if overlap > 0:
-#             return float("-inf")
-
-#         return used_area / (particle.stock_size[0] * particle.stock_size[1])
-
-#     def update_particle(self, particle: Particle):
-#         r1, r2 = random.random(), random.random()
-
-#         # Update velocity
-#         particle.velocity = (
-#             self.w * particle.velocity
-#             + self.c1 * r1 * (particle.pbest_position - particle.position)
-#             + self.c2 * r2 * (self.gbest_position - particle.position)
-#         )
-
-#         # Update position
-#         particle.position += particle.velocity
-
-#         # Clamp positions within bounds
-#         for i, piece in enumerate(particle.pieces):
-#             particle.position[i][0] = max(
-#                 0,
-#                 min(particle.position[i][0], particle.stock_size[0] - piece["size"][0]),
-#             )
-#             particle.position[i][1] = max(
-#                 0,
-#                 min(particle.position[i][1], particle.stock_size[1] - piece["size"][1]),
-#             )
-
-#     def get_action(self, observation, info):
-#         if not observation["products"]:
-#             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
-#         stock = observation["products"][0]
-#         if len(observation["products"]) <= 1:
-#             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
-#         # Initialize swarm if first time
-#         if not self.particles:
-#             self.initialize_swarm((stock[0], stock[1]), observation["products"][1:])
-
-#         # Run PSO iterations
-#         for _ in range(self.max_iter):
-#             for particle in self.particles:
-#                 # Calculate fitness
-#                 particle.fitness = self.calculate_fitness(particle)
-
-#                 # Update personal best
-#                 if particle.fitness > particle.pbest_score:
-#                     particle.pbest_score = particle.fitness
-#                     particle.pbest_position = particle.position.copy()
-
-#                 # Update global best
-#                 if particle.fitness > self.gbest_score:
-#                     self.gbest_score = particle.fitness
-#                     self.gbest_position = particle.position.copy()
-
-#             # Update particles
-#             for particle in self.particles:
-#                 self.update_particle(particle)
-
-#         # Return best position found
-#         next_piece = observation["products"][1]
-#         if self.gbest_position is not None:
-#             pos = self.gbest_position[0].astype(int)
-#             return {"stock_idx": 0, "size": next_piece["size"], "position": tuple(pos)}
-
-#         return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
-
-# class DPPolicy:
-#     def __init__(self):
-#         self.memo = {}
-#         self.stock_size = None
-#         self.placement_map = {}
-
-#     def solve_dp(
-#         self, width: int, height: int, pieces: List[Dict]
-#     ) -> Tuple[float, Dict]:
-#         # Create state key
-#         state = (
-#             width,
-#             height,
-#             tuple(sorted((p["size"][0], p["size"][1]) for p in pieces)),
-#         )
-
-#         # Check memoized result
-#         if state in self.memo:
-#             return self.memo[state]
-
-#         # Base cases
-#         if not pieces:
-#             return 0, {}
-#         if width <= 0 or height <= 0:
-#             return float("-inf"), {}
-
-#         best_value = 0
-#         best_cut = {}
-
-#         # Try each piece at current position
-#         for i, piece in enumerate(pieces):
-#             w, h = piece["size"]
-#             remaining_pieces = pieces[:i] + pieces[i + 1 :]
-
-#             # Try horizontal cut
-#             if w <= width:
-#                 # Cut right
-#                 right_value, right_cut = self.solve_dp(
-#                     width - w, height, remaining_pieces
-#                 )
-#                 if right_value != float("-inf"):
-#                     value = w * h + right_value
-#                     if value > best_value:
-#                         best_value = value
-#                         best_cut = {
-#                             "piece": piece,
-#                             "position": (0, 0),
-#                             "next": right_cut,
-#                         }
-
-#             # Try vertical cut
-#             if h <= height:
-#                 # Cut down
-#                 down_value, down_cut = self.solve_dp(
-#                     width, height - h, remaining_pieces
-#                 )
-#                 if down_value != float("-inf"):
-#                     value = w * h + down_value
-#                     if value > best_value:
-#                         best_value = value
-#                         best_cut = {
-#                             "piece": piece,
-#                             "position": (0, 0),
-#                             "next": down_cut,
-#                         }
-
-#         self.memo[state] = (best_value, best_cut)
-#         return best_value, best_cut
-
-#     def reconstruct_solution(self, cut_info: Dict, offset: Tuple[int, int] = (0, 0)):
-#         if not cut_info:
-#             return []
-
-#         piece = cut_info["piece"]
-#         x, y = offset
-#         piece["position"] = (x, y)
-
-#         solution = [piece]
-
-#         # Recursively reconstruct next cuts
-#         if "next" in cut_info:
-#             next_x = x + piece["size"][0] if "right" in cut_info else x
-#             next_y = y + piece["size"][1] if "down" in cut_info else y
-#             solution.extend(
-#                 self.reconstruct_solution(cut_info["next"], (next_x, next_y))
-#             )
-
-#         return solution
-
-#     def get_action(self, observation, info):
-#         if not observation["products"]:
-#             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
-#         stock = observation["products"][0]
-#         if len(observation["products"]) <= 1:
-#             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
-#         # Clear memoization for new problem
-#         self.memo = {}
-#         self.stock_size = (stock[0], stock[1])
-
-#         # Solve using DP
-#         _, cut_info = self.solve_dp(stock[0], stock[1], observation["products"][1:])
-
-#         # Reconstruct solution
-#         solution = self.reconstruct_solution(cut_info)
-
-#         if solution:
-#             next_piece = observation["products"][1]
-#             for piece in solution:
-#                 if piece["size"] == next_piece["size"]:
-#                     return {
-#                         "stock_idx": 0,
-#                         "size": piece["size"],
-#                         "position": piece["position"],
-#                     }
-
-#         return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
