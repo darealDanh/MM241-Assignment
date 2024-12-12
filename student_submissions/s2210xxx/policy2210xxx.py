@@ -1,15 +1,15 @@
 from policy import Policy
 
 
-def Policy2210xxx(Policy):
-    def __init__(self):
+class Policy2210xxx(Policy):
+    def __init__(self, policy_id=1):
+        assert policy_id in [1, 2], "Policy ID must be 1 or 2"
         # Student code here
-        self.pop_size = 50
-        self.generations = 50
-        self.mutation_rate = 0.1
-        self.elite_size = 5
-        self.population = []
-        self.best_solution = None
+        if policy_id == 1:
+            pass
+        elif policy_id == 2:
+            pass
+        
 
     def get_action(self, observation, info):
         # Student code here

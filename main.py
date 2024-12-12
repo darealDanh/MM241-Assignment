@@ -1,9 +1,8 @@
 import gym_cutting_stock
 import gymnasium as gym
 from policy import GreedyPolicy, RandomPolicy
-from student_submissions.s2210xxx.policy2210xxx import Policy2210xxx
+# from student_submissions.s2210xxx.policy2210xxx import Policy2210xxx
 from student_submissions.s2210xxx.policy2350030 import Policy2350030
-import time
 
 # Create the environment
 env = gym.make(
@@ -24,11 +23,11 @@ if __name__ == "__main__":
     #     observation, reward, terminated, truncated, info = env.step(action)
 
     #     if terminated or truncated:
-    #         observation, info = env.reset(seed=ep)
     #         print(info)
+    #         observation, info = env.reset(seed=ep)
     #         ep += 1
-    # print("GreedyPolicy done")
-    # Reset the environment
+
+    # # Reset the environment
     # observation, info = env.reset(seed=42)
 
     # # Test RandomPolicy
@@ -39,36 +38,22 @@ if __name__ == "__main__":
     #     observation, reward, terminated, truncated, info = env.step(action)
 
     #     if terminated or truncated:
-    #         observation, info = env.reset(seed=ep)
     #         print(info)
+    #         observation, info = env.reset(seed=ep)
     #         ep += 1
-    # print("RandomPolicy done")
+
     # Uncomment the following code to test your policy
     # Reset the environment
-    observation, info = env.reset(seed=42)
+    observation, info = env.reset(seed=100)
     print(info)
-    print(len(observation["stocks"]))
-    print(
-        "================================================================================"
-    )
-    print(len(observation["products"]))
-    # print(observation["stocks"])
-    while len(observation["products"]) <= 10:
-        observation, info = env.reset(seed=42)
 
-    policy2210xxx = Policy2350030()
-    for _ in range(NUM_EPISODES):
-        print(
-            "================================================================================"
-        )
+    policy2210xxx = Policy2350030(policy_id=2)
+    for _ in range(200):
         action = policy2210xxx.get_action(observation, info)
         observation, reward, terminated, truncated, info = env.step(action)
-        print(reward)
-        print(terminated)
-        print(truncated)
         print(info)
 
         if terminated or truncated:
             observation, info = env.reset()
-time.sleep(3)
+
 env.close()

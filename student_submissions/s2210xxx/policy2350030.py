@@ -2,16 +2,27 @@ import numpy as np
 from random import randint, random, sample
 from copy import deepcopy
 from math import ceil
-import time
 from policy import Policy
 
+
 class Policy2350030(Policy):
+    def __init__(self, policy_id=1):
+        assert policy_id in [1, 2], "Policy ID must be 1 or 2"
+        if policy_id == 1:
+            self.policy = GeneticAlgorithmPolicy()
+        elif policy_id == 2:
+            self.policy = SkylineAlgorithmPolicy()
+
+    def get_action(self, observation, info):
+        return self.policy.get_action(observation, info)
+
+class GeneticAlgorithmPolicy(Policy):
     def __init__(self):
         self.MAX_ITER = 100
         self.pop_size = 100
-        self.generations = 200
-        self.mutation_rate = 0.01
-        self.elite_size = 3
+        self.generations = 100
+        self.mutation_rate = 0.05
+        self.elite_size = 5
         self.population = []
         self.best_solution = None
         self.lengthArr = []
@@ -20,21 +31,23 @@ class Policy2350030(Policy):
         self.N = 0
 
     def initialize_population(self, maxRepeatArr):
+        sorted_indices = np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr))
         return [
             [i, randint(1, maxRepeatArr[i])]
             for _ in range(self.pop_size)
-            for i in np.argsort(-np.array(self.lengthArr) * np.array(self.widthArr))
+            for i in sorted_indices
         ]
 
     def _can_place_(self, stock, position, prod_size, rotated=False):
         pos_x, pos_y = position
-        prod_w, prod_h = prod_size if not rotated else (prod_size[1], prod_size[0])
-        return np.all(stock[pos_x : pos_x + prod_w, pos_y : pos_y + prod_h] == -1)
+        prod_w, prod_h = prod_size if not rotated else prod_size[::-1]
+        return np.all(stock[pos_x:pos_x + prod_w, pos_y:pos_y + prod_h] == -1)
 
     def calculate_fitness(self, chromosome, patterns):
         return sum(
-            np.sum(patterns[chromosome[i]]) * chromosome[i + 1]
-            for i in range(0, len(chromosome), 2)
+            np.sum(patterns[pattern_index]) * weight
+            for pattern_index, weight in zip(chromosome[::2], chromosome[1::2])
+            if pattern_index < len(patterns)
         )
 
     def generate_efficient_patterns(self, stockLength, stockWidth):
@@ -99,7 +112,6 @@ class Policy2350030(Policy):
         return new_population
 
     def run_genetic_algorithm(self, patterns, population, max_repeat_arr):
-        start_time = time.time()
         best_results = []
         for _ in range(self.MAX_ITER):
             fitness_pairs = [
@@ -118,8 +130,6 @@ class Policy2350030(Policy):
                 max_repeat_arr,
             )
             self.population = deepcopy(next_gen[: self.pop_size])
-        end_time = time.time()
-        print(f"Execution time: {end_time - start_time} seconds")
         return best_solution, best_fitness, best_results
 
     def create_new_pop(self, population):
@@ -136,7 +146,7 @@ class Policy2350030(Policy):
         self.lengthArr = [prod["size"][0] for prod in list_prods if prod["quantity"] > 0]
         self.widthArr = [prod["size"][1] for prod in list_prods if prod["quantity"] > 0]
         self.demandArr = [prod["quantity"] for prod in list_prods if prod["quantity"] > 0]
-        self.N = len(self.lengthArr)  # Ensure N is set correctly
+        self.N = len(self.lengthArr) 
         if self.N == 0:
             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
         first_stock = stocks[0]
@@ -171,3 +181,107 @@ class Policy2350030(Policy):
                                 "rotated": True,
                             }
         return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
+    
+
+class SegmentTree:
+    def __init__(self, size):
+        self.size = size
+        self.tree = [0] * (2 * size)
+
+    def update(self, pos, value):
+        pos += self.size
+        self.tree[pos] = value
+        while pos > 1:
+            pos //= 2
+            self.tree[pos] = max(self.tree[2 * pos], self.tree[2 * pos + 1])
+
+    def query(self, left, right):
+        left += self.size
+        right += self.size
+        max_height = 0
+        while left < right:
+            if left % 2 == 1:
+                max_height = max(max_height, self.tree[left])
+                left += 1
+            if right % 2 == 1:
+                right -= 1
+                max_height = max(max_height, self.tree[right])
+            left //= 2
+            right //= 2
+        return max_height
+
+class SkylineAlgorithmPolicy(Policy):
+    def __init__(self):
+        self.lengthArr = []
+        self.widthArr = []
+        self.demandArr = []
+        self.N = 0
+        self.skyline = None
+
+    def add_rectangle(self, rect_width, rect_height):
+        rotations = [(rect_width, rect_height), (rect_height, rect_width)]
+        for width, height in rotations:
+            pos = self.find_position(width, height)
+            print(f"Trying to place rectangle of width {width} and height {height} at position {pos}")  # Debug print
+            if pos is not None:
+                self.update_skyline(pos, width, height)
+                return pos, (width != rect_width)
+        return None, False
+
+    def find_position(self, rect_width, rect_height):
+        for i in range(self.skyline.size - rect_width + 1):
+            max_height = self.skyline.query(i, i + rect_width)
+            print(f"Checking position {i}: max height in range [{i}, {i + rect_width}] is {max_height}")  # Debug print
+            if max_height <= self.skyline.query(0, self.skyline.size):
+                print(f"Position {i} is suitable for width {rect_width} and height {rect_height}")  # Debug print
+                return i
+        print(f"No suitable position found for width {rect_width} and height {rect_height}")  # Debug print
+        return None
+
+    def update_skyline(self, pos, rect_width, rect_height):
+        max_height = self.skyline.query(pos, pos + rect_width)
+        print(f"Updating skyline at position {pos} with width {rect_width} and height {rect_height}")  # Debug print
+        for i in range(pos, pos + rect_width):
+            self.skyline.update(i, max_height + rect_height)
+        print(f"Skyline updated: {self.skyline.tree}")  # Debug print
+
+    def run_skyline(self, stocks, list_prods):
+        for stock_idx, stock in enumerate(stocks):
+            stock_width, stock_height = self._get_stock_size_(stock)
+            self.skyline = SegmentTree(stock_width)
+            added_rectangles = []
+            for prod in list_prods:
+                if prod["quantity"] == 0:
+                    continue
+                rect_width, rect_height = prod["size"]
+                pos, rotated = self.add_rectangle(rect_width, rect_height)
+                if pos is not None:
+                    added_rectangles.append(
+                        {
+                            "stock_idx": stock_idx,
+                            "size": [rect_width, rect_height],
+                            "position": pos,
+                            "rotated": rotated,
+                        }
+                    )
+                    prod["quantity"] -= 1
+            if added_rectangles:
+                return added_rectangles
+        return []
+
+    def get_action(self, observation, info):
+        list_prods = observation["products"]
+        stocks = observation["stocks"]
+        if not list_prods or not stocks:
+            return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
+
+        self.lengthArr = [prod["size"][0] for prod in list_prods if prod["quantity"] > 0]
+        self.widthArr = [prod["size"][1] for prod in list_prods if prod["quantity"] > 0]
+        self.demandArr = [prod["quantity"] for prod in list_prods if prod["quantity"] > 0]
+        self.N = len(self.lengthArr)
+
+        if self.N == 0:
+            return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
+
+        added_rectangles = self.run_skyline(stocks, list_prods)
+        return added_rectangles[0] if added_rectangles else {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
