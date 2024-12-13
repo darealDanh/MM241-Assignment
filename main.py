@@ -13,62 +13,48 @@ env = gym.make(
 NUM_EPISODES = 100
 
 if __name__ == "__main__":
-    # # Reset the environment
-    # observation, info = env.reset(seed=42)
-
-    # # Test GreedyPolicy
-    # gd_policy = GreedyPolicy()
-    # ep = 0
-    # while ep < NUM_EPISODES:
-    #     action = gd_policy.get_action(observation, info)
-    #     observation, reward, terminated, truncated, info = env.step(action)
-
-    #     if terminated or truncated:
-    #         observation, info = env.reset(seed=ep)
-    #         print(info)
-    #         ep += 1
-    # print("GreedyPolicy done")
     # Reset the environment
-    # observation, info = env.reset(seed=42)
+    observation, info = env.reset(seed=42)
 
-    # # Test RandomPolicy
-    # rd_policy = RandomPolicy()
-    # ep = 0
-    # while ep < NUM_EPISODES:
-    #     action = rd_policy.get_action(observation, info)
-    #     observation, reward, terminated, truncated, info = env.step(action)
+    # Test GreedyPolicy
+    gd_policy = GreedyPolicy()
+    ep = 0
+    while ep < NUM_EPISODES:
+        action = gd_policy.get_action(observation, info)
+        observation, reward, terminated, truncated, info = env.step(action)
 
-    #     if terminated or truncated:
-    #         observation, info = env.reset(seed=ep)
-    #         print(info)
-    #         ep += 1
-    # print("RandomPolicy done")
+        if terminated or truncated:
+            observation, info = env.reset(seed=ep)
+            print(info)
+            ep += 1
+
+    # Reset the environment
+    observation, info = env.reset(seed=42)
+
+    # Test RandomPolicy
+    rd_policy = RandomPolicy()
+    ep = 0
+    while ep < NUM_EPISODES:
+        action = rd_policy.get_action(observation, info)
+        observation, reward, terminated, truncated, info = env.step(action)
+
+        if terminated or truncated:
+            observation, info = env.reset(seed=ep)
+            print(info)
+            ep += 1
+
     # Uncomment the following code to test your policy
     # Reset the environment
     observation, info = env.reset(seed=42)
-    print(info)
-    print(len(observation["stocks"]))
-    print(
-        "================================================================================"
-    )
-    print(len(observation["products"]))
-    # print(observation["stocks"])
-    while len(observation["products"]) <= 10:
-        observation, info = env.reset(seed=42)
 
     policy2210xxx = Policy2350030()
-    for _ in range(NUM_EPISODES):
-        print(
-            "================================================================================"
-        )
+    for _ in range(200):
+
         action = policy2210xxx.get_action(observation, info)
         observation, reward, terminated, truncated, info = env.step(action)
-        print(reward)
-        print(terminated)
-        print(truncated)
         print(info)
 
         if terminated or truncated:
             observation, info = env.reset()
-time.sleep(3)
+
 env.close()
