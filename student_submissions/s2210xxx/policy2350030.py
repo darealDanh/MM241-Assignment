@@ -4,7 +4,6 @@ from copy import deepcopy
 from math import ceil
 from policy import Policy
 
-
 class Policy2350030(Policy):
     def __init__(self, policy_id=1):
         assert policy_id in [1, 2], "Policy ID must be 1 or 2"
@@ -18,11 +17,11 @@ class Policy2350030(Policy):
 
 class GeneticAlgorithmPolicy(Policy):
     def __init__(self):
-        self.MAX_ITER = 100
+        self.MAX_ITER = 10
         self.pop_size = 100
         self.generations = 100
-        self.mutation_rate = 0.05
-        self.elite_size = 5
+        self.mutation_rate = 0.01
+        self.elite_size = 10
         self.population = []
         self.best_solution = None
         self.lengthArr = []
@@ -138,31 +137,28 @@ class GeneticAlgorithmPolicy(Policy):
             for _ in range(self.pop_size)
         ]
 
-    def get_action(self, observation, info):
-        list_prods = observation["products"]
+    def get_action(self, observation, info): 
+        list_prods = sorted(observation["products"], key=lambda x: x["size"][0] * x["size"][1], reverse=True)
         stocks = observation["stocks"]
+
         if not list_prods or not stocks:
-            return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
+            return self._get_empty_action()
+
         self.lengthArr = [prod["size"][0] for prod in list_prods if prod["quantity"] > 0]
         self.widthArr = [prod["size"][1] for prod in list_prods if prod["quantity"] > 0]
         self.demandArr = [prod["quantity"] for prod in list_prods if prod["quantity"] > 0]
-        self.N = len(self.lengthArr) 
+        self.N = len(self.lengthArr)
+
         if self.N == 0:
             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-        first_stock = stocks[0]
-        stock_Length, stock_Width = self._get_stock_size_(first_stock)
-        patterns = self.generate_efficient_patterns(stock_Length, stock_Width)
-        maxRepeatArr = self.max_pattern_exist(patterns)
-        self.population = self.initialize_population(maxRepeatArr)
-        best_solution, _, _ = self.run_genetic_algorithm(
-            patterns, self.population, maxRepeatArr
-        )
-        for i in range(0, len(best_solution), 2):
-            pattern_index = best_solution[i]
-            for stock_idx, stock in enumerate(stocks):
-                stock_w, stock_h = self._get_stock_size_(stock)
-                for x in range(stock_w):
-                    for y in range(stock_h):
+
+        for stock_idx, stock in enumerate(stocks):
+            stock_Length, stock_Width = self._get_stock_size_(stock)
+            patterns = self.generate_efficient_patterns(stock_Length, stock_Width)
+
+            for pattern_index, pattern in enumerate(patterns):
+                for x in range(stock_Width):
+                    for y in range(stock_Length):
                         if pattern_index >= len(self.lengthArr):
                             continue
                         prod_size = (self.lengthArr[pattern_index], self.widthArr[pattern_index])
@@ -180,101 +176,35 @@ class GeneticAlgorithmPolicy(Policy):
                                 "position": (x, y),
                                 "rotated": True,
                             }
+
         return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
     
+    @staticmethod
+    def _get_empty_action():
+        return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
 
-class SegmentTree:
-    def __init__(self, size):
-        self.size = size
-        self.tree = [0] * (2 * size)
-
-    def update(self, pos, value):
-        pos += self.size
-        self.tree[pos] = value
-        while pos > 1:
-            pos //= 2
-            self.tree[pos] = max(self.tree[2 * pos], self.tree[2 * pos + 1])
-
-    def query(self, left, right):
-        left += self.size
-        right += self.size
-        max_height = 0
-        while left < right:
-            if left % 2 == 1:
-                max_height = max(max_height, self.tree[left])
-                left += 1
-            if right % 2 == 1:
-                right -= 1
-                max_height = max(max_height, self.tree[right])
-            left //= 2
-            right //= 2
-        return max_height
+from policy import Policy
 
 class SkylineAlgorithmPolicy(Policy):
     def __init__(self):
-        self.lengthArr = []
-        self.widthArr = []
-        self.demandArr = []
-        self.N = 0
-        self.skyline = None
+        self.skyline = []
+        self.stock_width = 0
+        self.stock_height = 0
+        self.height_cache = {}
 
-    def add_rectangle(self, rect_width, rect_height):
-        rotations = [(rect_width, rect_height), (rect_height, rect_width)]
-        for width, height in rotations:
-            pos = self.find_position(width, height)
-            print(f"Trying to place rectangle of width {width} and height {height} at position {pos}")  # Debug print
-            if pos is not None:
-                self.update_skyline(pos, width, height)
-                return pos, (width != rect_width)
-        return None, False
-
-    def find_position(self, rect_width, rect_height):
-        for i in range(self.skyline.size - rect_width + 1):
-            max_height = self.skyline.query(i, i + rect_width)
-            print(f"Checking position {i}: max height in range [{i}, {i + rect_width}] is {max_height}")  # Debug print
-            if max_height <= self.skyline.query(0, self.skyline.size):
-                print(f"Position {i} is suitable for width {rect_width} and height {rect_height}")  # Debug print
-                return i
-        print(f"No suitable position found for width {rect_width} and height {rect_height}")  # Debug print
-        return None
-
-    def update_skyline(self, pos, rect_width, rect_height):
-        max_height = self.skyline.query(pos, pos + rect_width)
-        print(f"Updating skyline at position {pos} with width {rect_width} and height {rect_height}")  # Debug print
-        for i in range(pos, pos + rect_width):
-            self.skyline.update(i, max_height + rect_height)
-        print(f"Skyline updated: {self.skyline.tree}")  # Debug print
-
-    def run_skyline(self, stocks, list_prods):
-        for stock_idx, stock in enumerate(stocks):
-            stock_width, stock_height = self._get_stock_size_(stock)
-            self.skyline = SegmentTree(stock_width)
-            added_rectangles = []
-            for prod in list_prods:
-                if prod["quantity"] == 0:
-                    continue
-                rect_width, rect_height = prod["size"]
-                pos, rotated = self.add_rectangle(rect_width, rect_height)
-                if pos is not None:
-                    added_rectangles.append(
-                        {
-                            "stock_idx": stock_idx,
-                            "size": [rect_width, rect_height],
-                            "position": pos,
-                            "rotated": rotated,
-                        }
-                    )
-                    prod["quantity"] -= 1
-            if added_rectangles:
-                return added_rectangles
-        return []
+    def generate_efficient_patterns(self, stock_length, stock_width):
+        patterns = []
+        for i in range(self.N):
+            pattern = [0] * self.N
+            pattern[i] = 1
+            patterns.append(pattern)
+        return patterns
 
     def get_action(self, observation, info):
-        list_prods = observation["products"]
+        list_prods = sorted(observation["products"], key=lambda x: x["size"][0] * x["size"][1], reverse=True)
         stocks = observation["stocks"]
         if not list_prods or not stocks:
-            return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
-
+            return self._get_empty_action()
         self.lengthArr = [prod["size"][0] for prod in list_prods if prod["quantity"] > 0]
         self.widthArr = [prod["size"][1] for prod in list_prods if prod["quantity"] > 0]
         self.demandArr = [prod["quantity"] for prod in list_prods if prod["quantity"] > 0]
@@ -282,6 +212,129 @@ class SkylineAlgorithmPolicy(Policy):
 
         if self.N == 0:
             return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
+        
+        for stock_idx, stock in enumerate(stocks):
+            stock_Length, stock_Width = self._get_stock_size_(stock)
+            patterns = self.generate_efficient_patterns(stock_Length, stock_Width)
+            for pattern_index, pattern in enumerate(patterns):
+                for x in range(stock_Width):
+                    for y in range(stock_Length):
+                        if pattern_index >= len(self.lengthArr):
+                            continue
+                        prod_size = (self.lengthArr[pattern_index], self.widthArr[pattern_index])
+                        if self._can_place_(stock, (x, y), prod_size):
+                            return {
+                                "stock_idx": stock_idx,
+                                "size": prod_size,
+                                "position": (x, y),
+                                "rotated": False,
+                            }
+                        elif self._can_place_(stock, (x, y), prod_size, rotated=True):
+                            return {
+                                "stock_idx": stock_idx,
+                                "size": (prod_size[1], prod_size[0]),
+                                "position": (x, y),
+                                "rotated": True,
+                            }
+        return self._get_empty_action()
+    
+    def _can_place_(self, stock, position, prod_size, rotated=False):
+        pos_x, pos_y = position
+        prod_w, prod_h = prod_size if not rotated else prod_size[::-1]
+        return np.all(stock[pos_x:pos_x + prod_w, pos_y:pos_y + prod_h] == -1)
 
-        added_rectangles = self.run_skyline(stocks, list_prods)
-        return added_rectangles[0] if added_rectangles else {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}
+    def calculate_used_area(self):
+        used_area = 0
+        for i in range(1, len(self.skyline)):
+            width = self.skyline[i][0] - self.skyline[i - 1][0]
+            height = self.skyline[i - 1][1]
+            used_area += width * height
+        return used_area
+
+    def _initialize_new_stock(self, stock):
+        self.stock_width, self.stock_height = self._get_stock_size_(stock)
+        self.skyline = [(0, 0)]
+        self.height_cache.clear()
+
+    def _try_place_product(self, prod):
+        width, height = prod["size"]
+        orientations = [(width, height, False), (height, width, True)]
+        best_position = None
+        best_rotation = False
+        min_waste = float('inf')
+        for w, h, rot in orientations:
+            pos = self.add_rectangle(w, h)
+            if pos:
+                waste = self.calculate_used_area()
+                if waste < min_waste:
+                    min_waste = waste
+                    best_position = pos
+                    best_rotation = rot
+        if best_position:
+            return {
+                "size": [height, width] if best_rotation else [width, height],
+                "position": best_position,
+                "rotated": best_rotation
+            }
+        return None
+    
+    def add_rectangle(self, rect_width, rect_height):
+        if rect_width > self.stock_width or rect_height > self.stock_height:
+            return None
+        pos = self.find_position(rect_width, rect_height)
+        if pos is not None:
+            self.update_skyline(pos[0], rect_width, pos[1] + rect_height)
+        return pos
+
+    def find_position(self, rect_width, rect_height):
+        if not self.skyline:
+            return (0, 0) if self._fits_in_stock(rect_width, rect_height) else None
+        return self._find_best_position(rect_width, rect_height)
+
+    def _get_cached_height(self, x, width):
+        if (x, width) not in self.height_cache:
+            self.height_cache[(x, width)] = self._calculate_height(x, width)
+        return self.height_cache[(x, width)]
+
+    def _calculate_height(self, x, width):
+        max_height = 0
+        for i in range(x, x + width):
+            max_height = max(max_height, self._get_height_at(i))
+        return max_height
+
+    def _get_height_at(self, x):
+        for i in range(len(self.skyline) - 1, -1, -1):
+            if self.skyline[i][0] <= x:
+                return self.skyline[i][1]
+        return 0
+
+    def _fits_in_stock(self, width, height):
+        return width <= self.stock_width and height <= self.stock_height
+
+    def _find_best_position(self, rect_width, rect_height):
+        best_x = -1
+        best_y = float('inf')
+        for i in range(len(self.skyline)):
+            x = self.skyline[i][0]
+            y = self._get_cached_height(x, rect_width)
+            if y + rect_height <= self.stock_height and y < best_y:
+                best_x = x
+                best_y = y
+        return (best_x, best_y) if best_x != -1 else None
+
+    def update_skyline(self, x, width, height):
+        new_skyline = []
+        for i in range(len(self.skyline)):
+            if self.skyline[i][0] < x:
+                new_skyline.append(self.skyline[i])
+            elif self.skyline[i][0] >= x + width:
+                new_skyline.append((x + width, height))
+                new_skyline.extend(self.skyline[i:])
+                break
+        self.skyline = new_skyline
+
+    def _get_stock_size_(self, stock):
+        return stock.shape[1], stock.shape[0]
+
+    def _get_empty_action(self):
+        return {"stock_idx": -1, "size": [0, 0], "position": (0, 0)}

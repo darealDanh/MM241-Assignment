@@ -47,8 +47,9 @@ if __name__ == "__main__":
     observation, info = env.reset(seed=100)
     print(info)
 
-    policy2210xxx = Policy2350030(policy_id=2)
-    for _ in range(200):
+
+    policy2210xxx = Policy2350030(policy_id=1)
+    for _ in range(NUM_EPISODES):
         action = policy2210xxx.get_action(observation, info)
         observation, reward, terminated, truncated, info = env.step(action)
         print(info)
